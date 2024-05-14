@@ -22,7 +22,7 @@ public:
 
     // Function to get the size of the record
     int get_size() {
-        return int(sizeof(int) * 2 + bio.length() + name.length());
+        return int(sizeof(int) * 4 + bio.length() + name.length());
     }
 
     // Function to serialize the record for writing to file
@@ -62,7 +62,9 @@ public:
         if (cur_size + r.get_size() >= 4096) { // Check if page size limit exceeded
             return false; // Cannot insert the record into this page
         } else {
+            // TODO add to slot directory
             records.push_back(r);
+            slot_directory.push_back(make_pair(cur_size, r.get_size()));
             cur_size += r.get_size();
             return true;
         }
@@ -82,6 +84,19 @@ public:
 
         // TODO:
         //  - Write slot_directory in reverse order into page_data buffer.
+        // TODO Reverse the order and write from the end of the file
+        for (const auto& slot : slot_directory) {
+            // cout << "Recording pair " << slot.first << ", " << slot.second << endl; 
+            memcpy(page_data + offset, &slot.first, sizeof(slot.first));
+            offset += sizeof(int);
+            memcpy(page_data + offset, &slot.second, sizeof(slot.second));
+            offset += sizeof(int);
+            // insert the slot directory information into the page_data
+            // if(offset >= OFFSET_RESERVED) {
+            //     cout << "ERROR overflowing " << OFFSET_RESERVED << " allocated bytes for slot directory" << endl;
+            //     return;
+            // }
+        }
         //  - Write overflowPointerIndex into page_data buffer.
         //  You should write the first entry of the slot_directory, which have the info about the first record at the bottom of the page, before overflowPointerIndex.
 
@@ -97,6 +112,56 @@ public:
         streamsize bytes_read = in.gcount();
         if (bytes_read == 4096) {
             // TODO: Process data to fill the records, slot_directory, and overflowPointerIndex
+            // Process slot directory
+            // TODO Update to reverse reading direction
+            for (int i = 0; i < num; i++) {
+                int first, second;
+                memcpy(reinterpret_cast<char*>(&first), page_data + cursor, sizeof(first));
+                cursor += sizeof(int);
+                memcpy(reinterpret_cast<char*>(&second), page_data + cursor, sizeof(first));
+                cursor += sizeof(int);
+                // cout << "Made pair " << first << ", " << second << endl;
+                slot_directory.push_back(make_pair(first, second));
+            }
+
+            // Process records
+            for (int i = 0; i < num; i++) {
+                // int - id
+                int id, man_id;
+                memcpy(reinterpret_cast<char*>(&id), page_data + cursor, sizeof(id));
+                cursor += sizeof(id);
+
+                // int - manager id
+                memcpy(reinterpret_cast<char*>(&man_id), page_data + cursor, sizeof(man_id));
+                cursor += sizeof(man_id);
+                
+                // int - size of name
+                int name_size;
+                memcpy(reinterpret_cast<char*>(&name_size), page_data + cursor, sizeof(name_size));
+                cursor += sizeof(name_size);
+
+                // str - name
+                char name[name_size + 1] = {0};
+                memcpy(reinterpret_cast<char*>(&name), page_data + cursor, name_size);
+                cursor += name_size;
+
+                // int - size of bio
+                int bio_size;
+                memcpy(reinterpret_cast<char*>(&bio_size), page_data + cursor, sizeof(bio_size));
+                cursor += sizeof(bio_size);
+
+                // str - bio
+                char bio[bio_size + 1] = {0};
+                memcpy(reinterpret_cast<char*>(&bio), page_data + cursor, bio_size);
+                cursor += bio_size;
+
+                Record r(id, man_id, name, bio);
+                // r.print();
+                // cout << "Cursor is at " << cursor << endl;
+                records.push_back(r);
+                // insert_record_into_page(r);
+            }
+
             return true;
         }
 
@@ -168,8 +233,7 @@ private:
     }
 
 public:
-    HashIndex(string indexFileName) : nextFreePage(0), fileName(indexFileName) {
-    }
+    HashIndex(string indexFileName) : nextFreePage(0), fileName(indexFileName) { }
 
     // Function to create hash index from Employee CSV file
     void createFromFile(string csvFileName) {
