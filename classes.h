@@ -13,6 +13,9 @@ public:
     int id, manager_id; // Employee ID and their manager's ID
     string bio, name; // Fixed length string to store employee name and biography
 
+    Record(int id, int man_id, string name, string bio)
+    : id(id), manager_id(man_id), name(name), bio(bio){}
+
     Record(vector<string> &fields) {
         id = stoi(fields[0]);
         name = fields[1];
@@ -62,7 +65,6 @@ public:
         if (cur_size + r.get_size() >= 4096) { // Check if page size limit exceeded
             return false; // Cannot insert the record into this page
         } else {
-            // TODO add to slot directory
             records.push_back(r);
             slot_directory.push_back(make_pair(cur_size, r.get_size()));
             cur_size += r.get_size();
@@ -82,11 +84,15 @@ public:
             memcpy(page_data + offset, serialized.c_str(), serialized.size());
             offset += serialized.size();
         }
+
+        // Write the number of records contained in the page
+        int num_records = slot_directory.size();
+        memcpy(page_data + 4096 - sizeof(num_records), &num_records, sizeof(num_records));
         // Write overflowPointerIndex into page_data buffer.
         memcpy(page_data + 4096 - sizeof(overflowPointerIndex), &overflowPointerIndex, sizeof(overflowPointerIndex));
 
         //  You should write the first entry of the slot_directory, which have the info about the first record at the bottom of the page, before overflowPointerIndex.
-        offset = sizeof(overflowPointerIndex);
+        offset = sizeof(overflowPointerIndex) + sizeof(num_records);
         for (const auto& slot : slot_directory) {
             // cout << "Recording pair " << slot.first << ", " << slot.second << endl; 
             memcpy(page_data + 4096 - offset - sizeof(slot.first), &slot.first, sizeof(slot.first));
@@ -107,55 +113,60 @@ public:
         streamsize bytes_read = in.gcount();
         if (bytes_read == 4096) {
             // TODO: Process data to fill the records, slot_directory, and overflowPointerIndex
-            // Process slot directory
-            // TODO Update to reverse reading direction
-            // for (int i = 0; i < num; i++) {
-            //     int first, second;
-            //     memcpy(reinterpret_cast<char*>(&first), page_data + cursor, sizeof(first));
-            //     cursor += sizeof(int);
-            //     memcpy(reinterpret_cast<char*>(&second), page_data + cursor, sizeof(first));
-            //     cursor += sizeof(int);
-            //     // cout << "Made pair " << first << ", " << second << endl;
-            //     slot_directory.push_back(make_pair(first, second));
-            // }
+            int num;
+            int offset = 0;
+            // Number of records to process
+            memcpy(reinterpret_cast<char*>(&num), page_data + 4096 - sizeof(num), sizeof(num));
+            offset += sizeof(num);
+            // Overflow pointer
+            memcpy(reinterpret_cast<char*>(&overflowPointerIndex), page_data + 4096 - sizeof(overflowPointerIndex) - offset, sizeof(overflowPointerIndex));
+            // Slot directory
+            for (int i = 0; i < num; i++) {
+                int first, second;
+                memcpy(reinterpret_cast<char*>(&first), page_data + 4096 - offset, sizeof(first));
+                offset += sizeof(first);
+                memcpy(reinterpret_cast<char*>(&second), page_data + 4096 - offset, sizeof(second));
+                offset += sizeof(second);
+                // cout << "Made pair " << first << ", " << second << endl;
+                slot_directory.push_back(make_pair(first, second));
+            }
 
-            // // Process records
-            // for (int i = 0; i < num; i++) {
-            //     // int - id
-            //     int id, man_id;
-            //     memcpy(reinterpret_cast<char*>(&id), page_data + cursor, sizeof(id));
-            //     cursor += sizeof(id);
+            // Process records
+            for (int i = 0; i < num; i++) {
+                // int - id
+                int id, man_id;
+                memcpy(reinterpret_cast<char*>(&id), page_data + offset, sizeof(id));
+                offset += sizeof(id);
 
-            //     // int - manager id
-            //     memcpy(reinterpret_cast<char*>(&man_id), page_data + cursor, sizeof(man_id));
-            //     cursor += sizeof(man_id);
+                // int - manager id
+                memcpy(reinterpret_cast<char*>(&man_id), page_data + offset, sizeof(man_id));
+                offset += sizeof(man_id);
                 
-            //     // int - size of name
-            //     int name_size;
-            //     memcpy(reinterpret_cast<char*>(&name_size), page_data + cursor, sizeof(name_size));
-            //     cursor += sizeof(name_size);
+                // int - size of name
+                int name_size;
+                memcpy(reinterpret_cast<char*>(&name_size), page_data + offset, sizeof(name_size));
+                offset += sizeof(name_size);
 
-            //     // str - name
-            //     char name[name_size + 1] = {0};
-            //     memcpy(reinterpret_cast<char*>(&name), page_data + cursor, name_size);
-            //     cursor += name_size;
+                // str - name
+                char name[name_size + 1] = {0};
+                memcpy(reinterpret_cast<char*>(&name), page_data + offset, name_size);
+                offset += name_size;
 
-            //     // int - size of bio
-            //     int bio_size;
-            //     memcpy(reinterpret_cast<char*>(&bio_size), page_data + cursor, sizeof(bio_size));
-            //     cursor += sizeof(bio_size);
+                // int - size of bio
+                int bio_size;
+                memcpy(reinterpret_cast<char*>(&bio_size), page_data + offset, sizeof(bio_size));
+                offset += sizeof(bio_size);
 
-            //     // str - bio
-            //     char bio[bio_size + 1] = {0};
-            //     memcpy(reinterpret_cast<char*>(&bio), page_data + cursor, bio_size);
-            //     cursor += bio_size;
+                // str - bio
+                char bio[bio_size + 1] = {0};
+                memcpy(reinterpret_cast<char*>(&bio), page_data + offset, bio_size);
+                offset += bio_size;
 
-            //     Record r(id, man_id, name, bio);
-            //     // r.print();
-            //     // cout << "Cursor is at " << cursor << endl;
-            //     records.push_back(r);
-            //     // insert_record_into_page(r);
-            // }
+                Record r(id, man_id, name, bio);
+                // r.print();
+                records.push_back(r);
+                // insert_record_into_page(r);
+            }
 
             return true;
         }
