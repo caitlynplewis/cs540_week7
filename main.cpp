@@ -20,6 +20,7 @@ int main() {
         int64_t id = std::stoll(searchID);
         std::string record;
         hashIndex.findAndPrintEmployee(id);
+        std::cout << "Enter the employee ID to find or type exit to terminate: ";
     }
 
     return 0;

@@ -249,7 +249,20 @@ private:
 
         // TODO:
         //  - Search for the record by ID in the page
+        for (auto& r: page.records) {
+            // cout << "\tSearching ID " << r.id << endl;
+            if(r.id == id){
+                cout << "Found match: " << endl;
+                r.print();
+                return;
+            }
+        }
         //  - Check for overflow pages and report if record with given ID is not found
+        if(page.overflowPointerIndex != -1){
+            // Search the overflow page
+            searchRecordByIdInPage(page.overflowPointerIndex, id);
+        }
+        cout << "ID " << id << " not found. " << endl;
     }
 
 public:
@@ -272,20 +285,26 @@ public:
                 fields.push_back(item);
             }
             Record record(fields);
+            // cout << "Created record to insert: " << endl;
+            // record.print();
 
             int hash_value = compute_hash_value(record.id);
             // Get the page index from PageDirectory. If it's not in PageDirectory, define a new page using nextFreePage.
             int page_index = PageDirectory.at(hash_value);
+            cout << "Hash value is " << hash_value << " with page index "<< page_index << endl;
             Page p;
             if(page_index == -1){
                 // If it doesn't exist, create it
+                cout << "\tCreating new page" << endl;
                 page_index = nextFreePage;
                 PageDirectory.at(hash_value) = page_index;
                 nextFreePage++;
             } else {
                 // If it does exist, get it
+                cout << "\tFetching existing page" << endl;
                 fstream indexFile(fileName, ios::binary | ios::in | ios::out);
                 p.read_from_data_file(indexFile);
+                indexFile.close();
             }
 
             //   - Insert the record into the appropriate page in the index file using addRecordToIndex() function.
@@ -301,11 +320,12 @@ public:
         // Open index file in binary mode for reading
         ifstream indexFile(fileName, ios::binary | ios::in);
 
-        // TODO:
         //  - Compute hash value for the given ID using compute_hash_value() function
         int hash_value = compute_hash_value(id);
         // Using the hash value, get the right page
+        int pageIndex = PageDirectory.at(hash_value);
         //  - Search for the record in the page corresponding to the hash value using searchRecordByIdInPage() function
+        searchRecordByIdInPage(pageIndex, id);
 
         // Close the index file
         indexFile.close();
