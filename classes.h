@@ -62,19 +62,19 @@ public:
 
     // Function to insert a record into the page
     bool insert_record_into_page(Record r) {
-        if (cur_size + r.get_size() >= 4096) { // Check if page size limit exceeded
+        if (cur_size + r.get_size() + (sizeof(int) * 2) >= 4096) { // Check if page size limit exceeded
             return false; // Cannot insert the record into this page
         } else {
             records.push_back(r);
             slot_directory.push_back(make_pair(cur_size, r.get_size()));
-            cur_size += r.get_size();
+            cur_size += r.get_size() + (sizeof(int) * 2);
             return true;
         }
     }
 
     // Function to write the page to a binary output stream. You may use
     void write_into_data_file(ostream &out) const {
-        // Page structure: [ Records | Free space | Slot directory | Overflow index ]
+        // Page structure: [ Records | Free space | Slot directory | Overflow index | Num Records ]
         char page_data[4096] = {0}; // Buffer to hold page data
         int offset = 0;
 
@@ -89,7 +89,7 @@ public:
         int num_records = slot_directory.size();
         memcpy(page_data + 4096 - sizeof(num_records), &num_records, sizeof(num_records));
         // Write overflowPointerIndex into page_data buffer.
-        memcpy(page_data + 4096 - sizeof(overflowPointerIndex), &overflowPointerIndex, sizeof(overflowPointerIndex));
+        memcpy(page_data + 4096 - sizeof(overflowPointerIndex) - sizeof(num_records), &overflowPointerIndex, sizeof(overflowPointerIndex));
 
         //  You should write the first entry of the slot_directory, which have the info about the first record at the bottom of the page, before overflowPointerIndex.
         offset = sizeof(overflowPointerIndex) + sizeof(num_records);
@@ -189,9 +189,8 @@ private:
     }
 
     // Function to add a new record to an existing page in the index file
-    void addRecordToIndex(int pageIndex, Page &page, Record &record) {
+    void addRecordToIndex(fstream& indexFile, int pageIndex, Page &page, Record &record) {
         // Open index file in binary mode for updating
-        fstream indexFile(fileName, ios::binary | ios::in | ios::out);
 
         if (!indexFile) {
             cerr << "Error: Unable to open index file for adding record." << endl;
@@ -231,8 +230,6 @@ private:
             p.write_into_data_file(indexFile);
         }
 
-        // Close the index file
-        indexFile.close();
     }
 
     // Function to search for a record by ID in a given page of the index file
@@ -273,6 +270,8 @@ public:
         // Read CSV file and add records to index
         // Open the CSV file for reading
         ifstream csvFile(csvFileName);
+        fstream indexFile;
+        indexFile.open(fileName,ios::binary | ios:: out | ios::in | ios::trunc);
 
         string line;
         // Read each line from the CSV file
@@ -308,11 +307,13 @@ public:
             }
 
             //   - Insert the record into the appropriate page in the index file using addRecordToIndex() function.
-            addRecordToIndex(page_index, p, record);
+            addRecordToIndex(indexFile, page_index, p, record);
         }
 
         // Close the CSV file
         csvFile.close();
+        // Close the index file
+        indexFile.close();
     }
 
     // Function to search for a record by ID in the hash index
